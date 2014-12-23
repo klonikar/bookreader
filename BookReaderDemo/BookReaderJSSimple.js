@@ -5,7 +5,8 @@
 
 // Create the BookReader object
 br = new BookReader();
-
+br.server = "ia902606.us.archive.org";
+br.bookPath = "/4/items/baburnama017152mbp/baburnama017152mbp";
 // Return the width of a given page.  Here we assume all images are 800 pixels wide
 br.getPageWidth = function(index) {
     return 800;
@@ -26,7 +27,9 @@ br.getPageURI = function(index, reduce, rotate) {
     var imgStr = (index+1).toString();
     var re = new RegExp("0{"+imgStr.length+"}$");
     var url = 'http://www.archive.org/download/BookReader/img/page'+leafStr.replace(re, imgStr) + '.jpg';
-    return url;
+	//var url = 'https://ia902606.us.archive.org/BookReader/BookReaderImages.php?zip=/4/items/baburnama017152mbp/baburnama017152mbp_tif.zip&file=baburnama017152mbp_tif/baburnama017152mbp_00' + leafStr.replace(re, imgStr) + '.tif&scale=4&rotate=0';
+	
+	return url;
 }
 
 // Return which side, left or right, that a given page should be displayed on
@@ -94,6 +97,6 @@ br.getEmbedCode = function(frameWidth, frameHeight, viewParams) {
 br.init();
 
 // read-aloud and search need backend compenents and are not supported in the demo
-$('#BRtoolbar').find('.read').hide();
+//$('#BRtoolbar').find('.read').hide();
 $('#textSrch').hide();
 $('#btnSrch').hide();

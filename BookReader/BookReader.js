@@ -147,6 +147,29 @@ function BookReader() {
     };
     this.default_theme = 'ol';
     this.theme = 'ol';
+    // many browsers support speech synthesis but not speech recognition
+    // check for webkitSpeechRecognition as well
+    window.SpeechRecognition = window.SpeechRecognition ||
+                               window.webkitSpeechRecognition;
+    if('speechSynthesis' in window) {
+        // select voice from dropdown for voices
+        var voices = window.speechSynthesis.getVoices();
+		var filteredVoices = voices.filter(function voiceFilter(voice) { return voice.localService && voice.lang.indexOf("en") >= 0; })
+		if(filteredVoices.length == 0)
+            filteredVoices = voices.filter(function voiceFilter(voice) { return voice.lang.indexOf("en") >= 0; })
+
+        this.ttsMsg = new SpeechSynthesisUtterance();
+        this.ttsMsg.voice = filteredVoices[0]; // Note: some voices don't support altering params
+        //this.ttsMsg.volume = 1; // 0 to 1
+        //this.ttsMsg.rate = 1; // 0.1 to 10
+        //this.ttsMsg.pitch = 2; //0 to 2
+    }
+    if('SpeechRecognition' in window) {
+        this.speechRecognitionSupported = true;
+    }
+	this.debugMode = false;
+	if(typeof(soundManager) != "undefined")
+        this.debugMode = soundManger.debugMode;
 
     return this;
 };
@@ -4816,10 +4839,10 @@ BookReader.prototype.ttsToggle = function () {
 
     if (false == this.ttsPlaying) {
         this.ttsPlaying = true;
-        this.showProgressPopup('Loading audio...');
-        if(soundManager.supported()) {
+        if(! 'ttsMsg' in this) this.showProgressPopup('Loading audio...');
+        if('ttsMsg' in this || (typeof(soundManager) != "undefined" && soundManager.supported())) {
             this.ttsStart();
-        } else {
+        } else if(typeof(soundManager) != "undefined") {
             soundManager.onready(function(oStatus) {
               if (oStatus.success) {
                 this.ttsStart();
@@ -4836,7 +4859,7 @@ BookReader.prototype.ttsToggle = function () {
 // ttsStart()
 //______________________________________________________________________________
 BookReader.prototype.ttsStart = function () {
-    if (soundManager.debugMode) console.log('starting readAloud');
+    if (this.debugMode) console.log('starting readAloud');
     if (this.constModeThumb == this.mode) this.switchMode(this.constMode1up);
     $('.BRicon.read').addClass('unread');
 
@@ -4855,9 +4878,13 @@ BookReader.prototype.ttsStop = function () {
     if (false == this.ttsPlaying) return;
     $('.BRicon.read').removeClass('unread');
 
-    if (soundManager.debugMode) console.log('stopping readaloud');
-    soundManager.stopAll();
-    soundManager.destroySound('chunk'+this.ttsIndex+'-'+this.ttsPosition);
+    if (this.debugMode) console.log('stopping readaloud');
+    if('ttsMsg' in this) {
+        window.speechSynthesis.cancel();
+    } else if(typeof(soundManager) != "undefined") {
+        soundManager.stopAll();
+        soundManager.destroySound('chunk'+this.ttsIndex+'-'+this.ttsPosition);
+    }
     this.ttsRemoveHilites();
     this.removeProgressPopup();
 
@@ -4878,20 +4905,21 @@ BookReader.prototype.ttsGetText = function(index, callback) {
 // ttsStartCB(): text-to-speech callback
 //______________________________________________________________________________
 BookReader.prototype.ttsStartCB = function (data) {
-    if (soundManager.debugMode)  console.log('ttsStartCB got data: ' + data);
+    if (this.debugMode)  console.log('ttsStartCB got data: ' + data);
     this.ttsChunks = data;
     this.ttsHilites = [];
 
     //deal with the page being blank
     if (0 == data.length) {
-        if (soundManager.debugMode) console.log('first page is blank!');
+        if(this.debugMode) console.log('first page is blank!');
         if(this.ttsAdvance(true)) {
             this.ttsGetText(this.ttsIndex, 'ttsStartCB');
         }
         return;
     }
 
-    this.showProgressPopup('Loading audio...');
+    if(!('ttsMsg' in this))
+        this.showProgressPopup('Loading audio...');
 
     ///// Many soundManger2 callbacks are broken when using HTML5 audio.
     ///// whileloading: broken on safari, worked in FF4, but broken on FireFox 5
@@ -4899,14 +4927,20 @@ BookReader.prototype.ttsStartCB = function (data) {
     ///// onbufferchange: fires in FF5 using HTML5 audio, but not in safari using flash audio
     ///// whileplaying: fires everywhere
     this.ttsPosition = -1;
-    var snd = soundManager.createSound({
-     id: 'chunk'+this.ttsIndex+'-0',
-     url: 'https://'+this.server+'/BookReader/BookReaderGetTTS.php?string=' + escape(data[0][0]) + '&format=.'+this.ttsFormat, //the .ogg is to trick SoundManager2 to use the HTML5 audio player
-     onload: function(){this.br.removeProgressPopup();}, //fires in safari...
-     onbufferchange: function(){if (false == this.isBuffering) this.br.removeProgressPopup();} //fires in FF and IE9
-    });
-    snd.br = this;
-    snd.load();
+	if('ttsMsg' in this) {
+        this.ttsMsg.text = data[0][0];
+        window.speechSynthesis.speak(this.ttsMsg);
+    }
+    else {
+        var snd = soundManager.createSound({
+        id: 'chunk'+this.ttsIndex+'-0',
+         url: 'https://'+this.server+'/BookReader/BookReaderGetTTS.php?string=' + escape(data[0][0]) + '&format=.'+this.ttsFormat, //the .ogg is to trick SoundManager2 to use the HTML5 audio player
+         onload: function(){this.br.removeProgressPopup();}, //fires in safari...
+         onbufferchange: function(){if (false == this.isBuffering) this.br.removeProgressPopup();} //fires in FF and IE9
+        });
+        snd.br = this;
+        snd.load();
+    }
 
     this.ttsNextChunk();
 }
@@ -4914,7 +4948,7 @@ BookReader.prototype.ttsStartCB = function (data) {
 // showProgressPopup
 //______________________________________________________________________________
 BookReader.prototype.showProgressPopup = function(msg) {
-    //if (soundManager.debugMode) console.log('showProgressPopup index='+this.ttsIndex+' pos='+this.ttsPosition);
+    //if(this.debugMode) console.log('showProgressPopup index='+this.ttsIndex+' pos='+this.ttsPosition);
     if (this.popup) return;
 
     this.popup = document.createElement("div");
@@ -4949,10 +4983,10 @@ BookReader.prototype.removeProgressPopup = function() {
 //______________________________________________________________________________
 BookReader.prototype.ttsNextPageCB = function (data) {
     this.ttsNextChunks = data;
-    if (soundManager.debugMode) console.log('preloaded next chunks.. data is ' + data);
+    if(this.debugMode) console.log('preloaded next chunks.. data is ' + data);
 
     if (true == this.ttsBuffering) {
-        if (soundManager.debugMode) console.log('ttsNextPageCB: ttsBuffering is true');
+        if(this.debugMode) console.log('ttsNextPageCB: ttsBuffering is true');
         this.ttsBuffering = false;
     }
 }
@@ -4960,12 +4994,18 @@ BookReader.prototype.ttsNextPageCB = function (data) {
 // ttsLoadChunk
 //______________________________________________________________________________
 BookReader.prototype.ttsLoadChunk = function (page, pos, string) {
-    var snd = soundManager.createSound({
-     id: 'chunk'+page+'-'+pos,
-     url: 'https://'+this.server+'/BookReader/BookReaderGetTTS.php?string=' + escape(string) + '&format=.'+this.ttsFormat //the .ogg is to trick SoundManager2 to use the HTML5 audio player
-    });
-    snd.br = this;
-    snd.load()
+	if('ttsMsg' in this) {
+        this.ttsMsg.text = string;
+        window.speechSynthesis.speak(this.ttsMsg);
+    }
+    else {
+        var snd = soundManager.createSound({
+        id: 'chunk'+page+'-'+pos,
+        url: 'https://'+this.server+'/BookReader/BookReaderGetTTS.php?string=' + escape(string) + '&format=.'+this.ttsFormat //the .ogg is to trick SoundManager2 to use the HTML5 audio player
+       });
+       snd.br = this;
+       snd.load();
+    }
 }
 
 
@@ -4978,10 +5018,11 @@ BookReader.prototype.ttsLoadChunk = function (page, pos, string) {
 // continues after animation is finished.
 
 BookReader.prototype.ttsNextChunk = function () {
-    if (soundManager.debugMode) console.log('nextchunk pos=' + this.ttsPosition);
+    if(this.debugMode) console.log('nextchunk pos=' + this.ttsPosition);
 
     if (-1 != this.ttsPosition) {
-        soundManager.destroySound('chunk'+this.ttsIndex+'-'+this.ttsPosition);
+        if(typeof(soundManager) != "undefined")
+            soundManager.destroySound('chunk'+this.ttsIndex+'-'+this.ttsPosition);
     }
 
     this.ttsRemoveHilites(); //remove old hilights
@@ -5007,12 +5048,12 @@ BookReader.prototype.ttsNextChunkPhase2 = function () {
     }
 
     if (0 == this.ttsChunks.length) {
-        if (soundManager.debugMode) console.log('ttsNextChunk2: ttsChunks.length is zero.. hacking...');
+        if (this.debugMode) console.log('ttsNextChunk2: ttsChunks.length is zero.. hacking...');
         this.ttsStartCB(this.ttsChunks);
         return;
     }
 
-    if (soundManager.debugMode) console.log('next chunk is ' + this.ttsPosition);
+    if (this.debugMode) console.log('next chunk is ' + this.ttsPosition);
 
     //prefetch next page of text
     if (0 == this.ttsPosition) {
@@ -5040,11 +5081,11 @@ BookReader.prototype.ttsAdvance = function (starting) {
     if (this.ttsPosition >= this.ttsChunks.length) {
 
         if (this.ttsIndex == (this.numLeafs-1)) {
-            if (soundManager.debugMode) console.log('tts stop');
+            if (this.debugMode) console.log('tts stop');
             return false;
         } else {
             if ((null != this.ttsNextChunks) || (starting)) {
-                if (soundManager.debugMode) console.log('moving to next page!');
+                if (this.debugMode) console.log('moving to next page!');
                 this.ttsIndex++;
                 this.ttsPosition = 0;
                 this.ttsChunks = this.ttsNextChunks;
@@ -5067,7 +5108,7 @@ BookReader.prototype.ttsAdvance = function (starting) {
                     }
                 }
             } else {
-                if (soundManager.debugMode) console.log('ttsAdvance: ttsNextChunks is null');
+                if (this.debugMode) console.log('ttsAdvance: ttsNextChunks is null');
                 return false;
             }
         }
@@ -5079,6 +5120,8 @@ BookReader.prototype.ttsAdvance = function (starting) {
 // ttsPrefetchAudio()
 //______________________________________________________________________________
 BookReader.prototype.ttsPrefetchAudio = function () {
+    //if('ttsMsg' in this)
+    //    this.ttsBuffering = false;
 
     if(false != this.ttsBuffering) {
         alert('TTS Error: prefetch() called while content still buffering!');
@@ -5091,15 +5134,15 @@ BookReader.prototype.ttsPrefetchAudio = function () {
         this.ttsLoadChunk(this.ttsIndex, nextPos, this.ttsChunks[nextPos][0]);
     } else {
         //for a short page, preload might nt have yet returned..
-        if (soundManager.debugMode) console.log('preloading chunk 0 from next page, index='+(this.ttsIndex+1));
+        if (this.debugMode) console.log('preloading chunk 0 from next page, index='+(this.ttsIndex+1));
         if (null != this.ttsNextChunks) {
             if (0 != this.ttsNextChunks.length) {
                 this.ttsLoadChunk(this.ttsIndex+1, 0, this.ttsNextChunks[0][0]);
             } else {
-                if (soundManager.debugMode) console.log('prefetchAudio(): ttsNextChunks is zero length!');
+                if (this.debugMode) console.log('prefetchAudio(): ttsNextChunks is zero length!');
             }
         } else {
-            if (soundManager.debugMode) console.log('ttsNextChunks is null, not preloading next page');
+            if (this.debugMode) console.log('ttsNextChunks is null, not preloading next page');
             this.ttsBuffering = true;
         }
     }
@@ -5111,7 +5154,7 @@ BookReader.prototype.ttsPrefetchAudio = function () {
 BookReader.prototype.ttsPlay = function () {
 
     var chunk = this.ttsChunks[this.ttsPosition];
-    if (soundManager.debugMode) {
+    if (this.debugMode) {
         console.log('ttsPlay position = ' + this.ttsPosition);
         console.log('chunk = ' + chunk);
         console.log(this.ttsChunks);
@@ -5128,9 +5171,19 @@ BookReader.prototype.ttsPlay = function () {
 
     //play current chunk
     if (false == this.ttsBuffering) {
-        soundManager.play('chunk'+this.ttsIndex+'-'+this.ttsPosition,{onfinish:function(){br.ttsNextChunk();}});
+        if('ttsMsg' in this) {
+            if(this.debugMode) console.log('play', 'chunk'+this.ttsIndex+'-'+this.ttsPosition);
+            this.ttsNextChunk();
+        }
+        else if(typeof(soundManager) != "undefined")
+            soundManager.play('chunk'+this.ttsIndex+'-'+this.ttsPosition,{onfinish:function(){br.ttsNextChunk();}});
     } else {
-        soundManager.play('chunk'+this.ttsIndex+'-'+this.ttsPosition,{onfinish:function(){br.ttsStartPolling();}});
+        if('ttsMsg' in this) {
+            if(this.debugMode) console.log('play', 'chunk'+this.ttsIndex+'-'+this.ttsPosition);
+            this.ttsStartPolling();
+        }
+        else if(typeof(soundManager) != "undefined")
+            soundManager.play('chunk'+this.ttsIndex+'-'+this.ttsPosition,{onfinish:function(){br.ttsStartPolling();}});
     }
 }
 
@@ -5153,11 +5206,11 @@ BookReader.prototype.ttsScrollToChunk = function(chunk) {
     var topOfFirstChunk = leafTop + chunkTop/this.reduce;
     var botOfLastChunk  = leafTop + chunkBot/this.reduce;
 
-    if (soundManager.debugMode) console.log('leafTop = ' + leafTop + ' topOfFirstChunk = ' + topOfFirstChunk + ' botOfLastChunk = ' + botOfLastChunk);
+    if (this.debugMode) console.log('leafTop = ' + leafTop + ' topOfFirstChunk = ' + topOfFirstChunk + ' botOfLastChunk = ' + botOfLastChunk);
 
     var containerTop = $('#BRcontainer').attr('scrollTop');
     var containerBot = containerTop + $('#BRcontainer').height();
-    if (soundManager.debugMode) console.log('containerTop = ' + containerTop + ' containerBot = ' + containerBot);
+    if (this.debugMode) console.log('containerTop = ' + containerTop + ' containerBot = ' + containerBot);
 
     if ((topOfFirstChunk < containerTop) || (botOfLastChunk > containerBot)) {
         //jumpToIndex scrolls so that chunkTop is centered.. we want chunkTop at the top
@@ -5222,12 +5275,12 @@ BookReader.prototype.ttsRemoveHilites = function (chunk) {
 // We need to wait for the text for the next page to be loaded, so we can
 // load the next audio chunk
 BookReader.prototype.ttsStartPolling = function () {
-    if (soundManager.debugMode) console.log('Starting the TTS poller...');
+    if (this.debugMode) console.log('Starting the TTS poller...');
     var self = this;
     this.ttsPoller=setInterval(function(){
         if (self.ttsBuffering) {return;}
 
-        if (soundManager.debugMode) console.log('TTS buffering finished!');
+        if (this.debugMode) console.log('TTS buffering finished!');
         clearInterval(self.ttsPoller);
         self.ttsPoller = null;
         self.ttsPrefetchAudio();
