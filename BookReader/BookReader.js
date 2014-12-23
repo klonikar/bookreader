@@ -3650,14 +3650,21 @@ BookReader.prototype.initToolbar = function(mode, ui) {
 
     // $$$mang should be contained within the BookReader div instead of body
     var readIcon = '';
-    if (!navigator.userAgent.match(/mobile/i)) {
+    var voicesSelection = '';
+    if ('ttsMsg' in this || !navigator.userAgent.match(/mobile/i)) { // allow mobile browsers if they have TTS enabled
         readIcon = "<button class='BRicon read modal'></button>";
+    }
+    if('ttsMsg' in this) {
+		voicesSelection = '<select id="voicesSelection" >';
+        window.speechSynthesis.getVoices().forEach(function(voice, i) { voicesSelection += '<option value="' + i + '">' + voice.name + '</option>'; } );
+		voicesSelection += '</select>';
     }
 
     $("#BookReader").append(
           "<div id='BRtoolbar'>"
         +   "<span id='BRtoolbarbuttons'>"
         +     "<form action='javascript:br.search($(\"#textSrch\").val());' id='booksearch'><input type='search' id='textSrch' name='textSrch' val='' placeholder='Search inside'/><button type='submit' id='btnSrch' name='btnSrch'>GO</button></form>"
+        +     voicesSelection
         +     "<button class='BRicon play'></button>"
         +     "<button class='BRicon pause'></button>"
         +     "<button class='BRicon info'></button>"
