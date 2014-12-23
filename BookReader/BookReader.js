@@ -4936,6 +4936,10 @@ BookReader.prototype.ttsStartCB = function (data) {
     this.ttsPosition = -1;
 	if('ttsMsg' in this) {
         this.ttsMsg.text = data[0][0];
+        var selectedIndex = document.getElementById('voicesSelection').selectedIndex;
+        if(selectedIndex >= 0) {
+            this.ttsMsg.voice = speechSynthesis.getVoices()[selectedIndex];
+        }
         window.speechSynthesis.speak(this.ttsMsg);
     }
     else {
@@ -5003,6 +5007,10 @@ BookReader.prototype.ttsNextPageCB = function (data) {
 BookReader.prototype.ttsLoadChunk = function (page, pos, string) {
 	if('ttsMsg' in this) {
         this.ttsMsg.text = string;
+        var selectedIndex = document.getElementById('voicesSelection').selectedIndex;
+        if(selectedIndex >= 0) {
+            this.ttsMsg.voice = speechSynthesis.getVoices()[selectedIndex];
+        }
         window.speechSynthesis.speak(this.ttsMsg);
     }
     else {
