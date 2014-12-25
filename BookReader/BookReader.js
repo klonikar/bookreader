@@ -147,19 +147,34 @@ function BookReader() {
     };
     this.default_theme = 'ol';
     this.theme = 'ol';
+    this.setupVoiceschangedHandler = function() {
+        var self = this;
+        window.speechSynthesis.onvoiceschanged = function() {
+            var voices = window.speechSynthesis.getVoices();
+            var filteredVoices = voices.filter(function voiceFilter(voice) { return voice.localService && voice.lang.indexOf("en") >= 0; })
+            if(filteredVoices.length == 0)
+                filteredVoices = voices.filter(function voiceFilter(voice) { return voice.lang.indexOf("en") >= 0; })
+            self.ttsMsg.voice = filteredVoices[0]; // Note: some voices don't support altering params
+            var voicesSelection = document.getElementById("voicesSelection");
+            if(voicesSelection) {
+                voicesSelection.options.length = 0; /*clear*/
+                voices.forEach(function(voice, i) {
+                    var text = voice.name;
+                    var value = i;
+                    voicesSelection.options.add(new Option(text, value));
+                });
+            }
+        }
+    }
     // many browsers support speech synthesis but not speech recognition
     // check for webkitSpeechRecognition as well
     window.SpeechRecognition = window.SpeechRecognition ||
                                window.webkitSpeechRecognition;
     if('speechSynthesis' in window) {
         // select voice from dropdown for voices
-        var voices = window.speechSynthesis.getVoices();
-		var filteredVoices = voices.filter(function voiceFilter(voice) { return voice.localService && voice.lang.indexOf("en") >= 0; })
-		if(filteredVoices.length == 0)
-            filteredVoices = voices.filter(function voiceFilter(voice) { return voice.lang.indexOf("en") >= 0; })
 
         this.ttsMsg = new SpeechSynthesisUtterance();
-        this.ttsMsg.voice = filteredVoices[0]; // Note: some voices don't support altering params
+        this.setupVoiceschangedHandler();
         //this.ttsMsg.volume = 1; // 0 to 1
         //this.ttsMsg.rate = 1; // 0.1 to 10
         //this.ttsMsg.pitch = 2; //0 to 2
@@ -5093,7 +5108,7 @@ BookReader.prototype.ttsNextChunkPhase2 = function () {
 BookReader.prototype.ttsAdvance = function (starting) {
     this.ttsPosition++;
 
-    if (this.ttsPosition >= this.ttsChunks.length) {
+    if ('ttsChunks' in this && this.ttsChunks != null && this.ttsPosition >= this.ttsChunks.length) {
 
         if (this.ttsIndex == (this.numLeafs-1)) {
             if (this.debugMode) console.log('tts stop');
@@ -5145,7 +5160,7 @@ BookReader.prototype.ttsPrefetchAudio = function () {
 
     //preload next chunk
     var nextPos = this.ttsPosition+1;
-    if (nextPos < this.ttsChunks.length) {
+    if ('ttsChunks' in this && this.ttsChunks != null && nextPos < this.ttsChunks.length) {
         this.ttsLoadChunk(this.ttsIndex, nextPos, this.ttsChunks[nextPos][0]);
     } else {
         //for a short page, preload might nt have yet returned..
