@@ -164,8 +164,23 @@ function BookReader() {
                     voicesSelection.options.add(new Option(text, value));
                 });
             }
+        };
+        this.ttsMsg.onend = this.ttsMsg.onstart = this.ttsMsg.onpause = 
+                            this.ttsMsg.onresume = this.ttsMsg.onerror =
+                            this.ttsMsg.onmark = this.ttsMsg.onboundary = 
+                            function(evt) { if(self.debugMode) console.log("tts event: ", evt); };
+        if('recognizer' in this) {
+            this.recognizer.onresult = function(e) {
+                if (e.results.length) {
+                    var result = e.results[e.resultIndex];
+                    if (result.isFinal) {
+                        if(self.debugMode) console.log('Speech result: ' + result[0].transcript);
+                    }
+                }
+            }
+            this.recognizer.start();
         }
-    }
+    };
     // many browsers support speech synthesis but not speech recognition
     // check for webkitSpeechRecognition as well
     window.SpeechRecognition = window.SpeechRecognition ||
@@ -174,15 +189,17 @@ function BookReader() {
         // select voice from dropdown for voices
 
         this.ttsMsg = new SpeechSynthesisUtterance();
+        if('SpeechRecognition' in window) {
+            this.recognizer = new window.SpeechRecognition();
+            this.recognizer.continuous = true;
+        }
+
         this.setupVoiceschangedHandler();
         //this.ttsMsg.volume = 1; // 0 to 1
         //this.ttsMsg.rate = 1; // 0.1 to 10
         //this.ttsMsg.pitch = 2; //0 to 2
     }
-    if('SpeechRecognition' in window) {
-        this.speechRecognitionSupported = true;
-    }
-	this.debugMode = false;
+	this.debugMode = true;
 	if(typeof(soundManager) != "undefined")
         this.debugMode = soundManger.debugMode;
 
@@ -4927,7 +4944,7 @@ BookReader.prototype.ttsGetText = function(index, callback) {
 // ttsStartCB(): text-to-speech callback
 //______________________________________________________________________________
 BookReader.prototype.ttsStartCB = function (data) {
-    if (this.debugMode)  console.log('ttsStartCB got data: ' + data);
+    if (this.debugMode)  console.log('ttsStartCB got data: ', data);
     this.ttsChunks = data;
     this.ttsHilites = [];
 
@@ -4950,7 +4967,7 @@ BookReader.prototype.ttsStartCB = function (data) {
     ///// whileplaying: fires everywhere
     this.ttsPosition = -1;
 	if('ttsMsg' in this) {
-        this.ttsMsg.text = data[0][0];
+        this.ttsMsg.text = data.map(function(x) { return x[0]; }).join(' ');
         var selectedIndex = document.getElementById('voicesSelection').selectedIndex;
         if(selectedIndex >= 0) {
             this.ttsMsg.voice = speechSynthesis.getVoices()[selectedIndex];
@@ -5020,6 +5037,7 @@ BookReader.prototype.ttsNextPageCB = function (data) {
 // ttsLoadChunk
 //______________________________________________________________________________
 BookReader.prototype.ttsLoadChunk = function (page, pos, string) {
+    if(this.debugMode) console.log("ttsLoadChunk: ", page, pos, string);
 	if('ttsMsg' in this) {
         this.ttsMsg.text = string;
         var selectedIndex = document.getElementById('voicesSelection').selectedIndex;
